@@ -1,4 +1,4 @@
-# Transportation Mode Detection con CNN
+# Transportation Mode Detection with CNN
 
 This repository contains my master's thesis work, where I explored the problem of transportation mode detection using Convolutional Neural Networks (CNNs). The primary goal was to surpass the results presented in some benchmark papers in the field.
 

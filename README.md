@@ -1,33 +1,84 @@
-# Transportation Mode Detection
+# Transportation Mode Detection con CNN
 
-## proprocessing
+This repository contains my master's thesis work, where I explored the problem of transportation mode detection using Convolutional Neural Networks (CNNs). The primary goal was to surpass the results presented in some benchmark papers in the field.
 
-Necessita avere il file **geolife.pkl** che contenga tutto il dataset Geolife originale
+# Table of Contents
 
-- Eseguire il file preprocessing.py
+ - Introduction
+ - Dataset
+ - Methodology
+ - Results
+ - References
 
-Viene creato il file: geolife_mov_with_features_correct2.pkl
+# Introduction
 
-Il quale contiene il dataset delle sole **mov** pronto per essere implementato nel file CNN.py per eseguire i calcoli della rete neurale.
+Transportation mode detection is a key problem in the field of urban mobility and transportation research. Accurately identifying the mode of transport can have significant implications for urban planning, traffic management, and environmental research.
 
-Inoltre vengono creati i seguenti file: traj_correct2.pkl, mov.pkl, stop.pkl
+# Dataset
+The dataset used for this project is Geolife. It's an open-source dataset that contains GPS trajectories of various users and their modes of transport.
 
-- Eseguire il file preprocessing_stop_mov.py
+[**Link to the Geolife dataset**](https://www.microsoft.com/en-us/research/publication/geolife-gps-trajectory-dataset-user-guide/)
 
-il quale necessita il file **traj_correct2.pkl** che contiene le stop e le mov ma senza le features cinematiche
+# Methodology
 
-Poi viene creato il file: geolife_stop_mov_features_correct.pkl
+## Trajectory Creation
 
-Che contiene le **stop** e le **mov**
+The GPS data from the Geolife dataset was processed to create trajectories. Each trajectory represents a sequence of GPS points, capturing the movement of an individual over time.
 
-Adesso siamo pronti per eseguire la CNN
+## Dataset Division: Stops and Moves
 
-## CNN
+The dataset was divided into two main categories:
+ - Stops: These represent periods where an individual remained stationary or moved very little.
+ - Moves: These represent periods of active movement.
+This division allowed for a more granular analysis of the data and provided insights into different transportation modes.
 
-impostare i parametri del modello CNN sul file config.yaml
+## Experimentation
+Several experiments were conducted to determine the best features and model configurations. Initial experiments focused on individual features like speed, while subsequent experiments combined multiple features to enhance model performance.
 
-- la variabile **flag** serve a selezionare il file con le sole mov o quello con le stop e le mov
+## CNN Model
+A Convolutional Neural Network (CNN) was employed to classify different modes of transport based on the GPS trajectories. The CNN was designed to capture spatial patterns in the data, making it well-suited for this task.
 
-- la variabile **features** indica quali features cinematiche vogliamo utilizzare
+## Ensemble Approach
+In addition to the standalone CNN model, an ensemble approach was also explored. This involved training multiple CNN models and aggregating their predictions to achieve a more robust and accurate classification.
 
-Poi eseguire direttamente il file CNN.py che deve printare i risultati del modello e salvare i risultati in un file excel.
+# Results
+The results obtained showed a significant improvement over the benchmark papers. The ensemble approach, in particular, demonstrated superior performance in several experiments.
+
+## Detailed Results:
+Speed Features:
+Using only the Speed features as input (set X), the model achieved an accuracy of 86.33% and an F1 score of 79.82%. This indicates that considering only the Speed might be sufficient to achieve good results in certain experiments.
+
+## Speed and Acceleration Features:
+When the input set X was composed of both Speed and Acceleration features, the model achieved an accuracy of 89.25% and an F1 score of 85.44%. This suggests that the combination of these two features can enhance the model's performance compared to using just one feature.
+
+## Dataset Composition:
+For the dataset composed of both Stops and Moves, it's important to note that every time the CNN model was evaluated, the sequence stop id was also considered. Thus, when considering two kinematic features, technically three features were used as input for the CNN model. The dataset composed solely of Movs sometimes achieved results as good as the dataset with Stops. In certain instances, it even surpassed the results of the dataset composed of both Stops and Movs.
+
+## Padding Experiments:
+For the Movs dataset, better results were obtained when using 2, 3, 4, and 5 kinematic features. However, when only one feature was used, the results were quite similar, with the best performance achieved using 0-padding.
+
+## Ensemble Approach:
+The ensemble approach involved training multiple CNN models and aggregating their predictions to achieve a more robust and accurate classification. By leveraging the strengths of multiple models, the ensemble method aimed to reduce the variance and improve the overall performance.
+
+The best result achieved using the ensemble approach was with the Speed and Acceleration features on the Movs dataset, where the model achieved an accuracy of 88.42% and an F1 score of 82.96%. This result underscores the effectiveness of the ensemble approach, especially when combined with the right feature set.
+
+
+# References:
+
+1. **Sina Dabiri, Kevin Heaslip**  
+   *Inferring transportation modes from GPS trajectories using a convolutional neural network*,  
+   Transportation Research Part C, (2018)
+
+2. **Hugues Moreau, Andrea Vassilev, and Liming Chen**  
+   *The Devil Is in the Details: An Efficient Convolutional Neural Network for Transport Mode Detection*,  
+   IEEE transactions on intelligent transportation systems, (2022)
+
+3. **Hancheng Cao, Fengli Xu, Jagan Sankaranarayanan, Yong Li and Hanan Samet**  
+   *Habit2vec: Trajectory Semantic Embedding for Living Pattern Recognition in Population*,  
+   IEEE transactions on mobile computing, (2020)
+
+4. [**Scikit-Mobility documentation**](https://scikit-mobility.github.io/scikit-mobility/)
+
+5. [**Ptrail documentation**](https://ptrail.readthedocs.io/en/latest/)
+
+6. [**Geolife official user guide**](https://www.microsoft.com/en-us/research/publication/geolife-gps-trajectory-dataset-user-guide/)

@@ -1,6 +1,6 @@
 parameters:
   flag: False    #if true considero dataframe con stop e mov, se false considero solo le mov
-  epochs: 30
+  epochs: 10
   batch_size: 32
   learning_rate: 0.0001
   features: ['Speed']  # 'Acceleration'
@@ -9,5 +9,5 @@ parameters:
 
 folders:
   folder_dati: "C:\\Users\\aless\\Documents\\03_git_hub_personale\\03_transportation_mode_detection\\dati"
-  folder_modelli: "C:\\Users\\aless\\Documents\\03_git_hub_personale\\03_transportation_mode_detection\\modelli"
-  folder_risultati: "C:\\Users\\aless\\Documents\\03_git_hub_personale\\03_transportation_mode_detection\\risultati"
+  folder_modelli: "C:\\Users\\aless\\Documents\\03_git_hub_personale\\03_transportation_mode_detection\\modelli\\ensemble"
+  folder_risultati: "C:\\Users\\aless\\Documents\\03_git_hub_personale\\03_transportation_mode_detection\\risultati\\ensemble"

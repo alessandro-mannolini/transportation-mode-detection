@@ -20,6 +20,8 @@ from torch.utils.data import DataLoader
 
 import yaml
 import os
+import datetime
+from functions import train_cnn_exp
 
 #####################################################################################################
 # parameters
@@ -30,9 +32,13 @@ flag = config['parameters']['flag']
 epochs = config['parameters']['epochs']
 batch = config['parameters']['batch_size']
 lr = config['parameters']['learning_rate']
-#channels = config['parameters']['channels']
 features = config['parameters']['features']
 pad = config['parameters']['pad']
+
+# folder
+folder_dati = config['folders']['folder_dati']
+folder_modelli = config['folders']['folder_modelli']
+folder_risultati = config['folders']['folder_risultati']
 ######################################################################################################
 
 # check della gpu
@@ -40,28 +46,29 @@ pad = config['parameters']['pad']
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if flag:
-    df1 = pd.read_pickle('C:/Users/aless/Documents/Master/Progetto di ricerca per Master/TMD/geolife_stop_mov_features_correct.pkl')
+    path_dati = os.path.join(folder_dati, "geolife_stop_mov_features_correct.pkl")
+    df1 = pd.read_pickle(path_dati)
     name_traj = 'stop_mov'
     features = ['stop_id'].extend(features)
     channels = len(features)
 else:
-    df1 = pd.read_pickle('C:/Users/aless/Documents/Master/Progetto di ricerca per Master/TMD/geolife_mov_with_features_correct2.pkl')
+    path_dati = os.path.join(folder_dati, "geolife_mov_with_features_correct2.pkl")
+    df1 = pd.read_pickle(path_dati)
     name_traj = 'mov'
     channels = len(features)
 
 df1 = df1.groupby(["mov_id"]).filter(lambda x: len(x) >= 10) 
-
 traj1 = df1.copy()
 
-###########################
-##### standard scaler #####
-###########################
+# standard scaler 
 scaler = StandardScaler()
-features = traj1[['Speed','Acceleration','Jerk','Distance','Distance_from_start','alt','Bearing_Rate','Bearing']]
-scaled_data = scaler.fit_transform(features)
+features_scaler = traj1[['Speed','Acceleration','Jerk','Distance','Distance_from_start','alt','Bearing_Rate','Bearing']]
+scaled_data = scaler.fit_transform(features_scaler)
 traj1[['Speed','Acceleration','Jerk','Distance','Distance_from_start','alt','Bearing_Rate','Bearing']] = scaled_data
 
-x_channels02 = traj1.groupby(['traj_id','mov_id'], as_index = False).apply(lambda x: x[[features]].values)
+################################################################################################################################
+
+x_channels02 = traj1.groupby(['traj_id','mov_id'], as_index = False).apply(lambda x: x[features].values)
 x_channels02 = x_channels02.values
 
 x_cut = [x[:900] for x in x_channels02]
@@ -76,7 +83,6 @@ y2 = y-1
 
 
 # splitto X e y in train e test set
-
 x_trainval, x_test, y_trainval, y_test = train_test_split(x_cut_0_array, y2, test_size=0.25, random_state=77)
 y_trainval, y_test = y_trainval.astype(float), y_test.astype(float)
 
@@ -245,7 +251,7 @@ class CNN(nn.Module):
         super(CNN, self).__init__()
 
         # Convolution 1
-        self.cnn1 = nn.Conv2d(in_channels = 5, out_channels=32,
+        self.cnn1 = nn.Conv2d(in_channels = channels, out_channels=32,
                               kernel_size =(1,3) , stride=1 , padding= 0) 
         self.relu1 = nn.ReLU()
         
@@ -383,135 +389,80 @@ class CNN(nn.Module):
         return out
     
 
+#######################################################################################################################
 
-# few changes to the train function used above. 
-
-def train(model, optimizer, loss_fn, train_loader, val_loader, epochs=20, device="cpu",to_print=True):
-    
-    lista_epoch = []
-    lista_train_loss = []
-    lista_val_loss = []
-    lista_accuracy = []
-    lista_lr = []
-    lista_time = []
-    
-    print("Begin training...")
-    scheduler = ExponentialLR(optimizer, gamma=0.8)
-
-    
-    for epoch in range(1, epochs+1):
-        start = time.process_time()
-        lista_epoch.append(epoch)
-        training_loss = 0.0
-        valid_loss = 0.0
-        model.train()
-        for batch in train_loader:
-            optimizer.zero_grad() # clear gradients for next train
-            inputs, targets = batch
-            inputs = inputs.to(device)
-            targets = targets.to(device)
-            output = model(inputs,to_print)
-            #print(output)
-            #print(targets)
-            loss = loss_fn(output, targets)
-            loss.backward() # backpropagation, compute gradients
-            optimizer.step() # apply gradients
-            training_loss += loss.data.item() * inputs.size(0)
-            # print(training_loss,loss.data.item(),inputs.size(0))
-        
-            if to_print:
-                break
-        training_loss /= len(train_loader.dataset)
-        lista_train_loss.append(format(training_loss, ".6f"))
-        
-        if to_print:
-            break
-        with torch.no_grad():
-            model.eval()
-            num_correct = 0 
-            num_examples = 0
-            for batch in val_loader:
-                inputs, targets = batch
-                inputs = inputs.to(device)
-                output = model(inputs)
-                targets = targets.to(device)
-                loss = loss_fn(output,targets) 
-                valid_loss += loss.data.item() * inputs.size(0)
-                correct = torch.eq(torch.max(F.softmax(output, dim=1), dim=1)[1], targets)
-                num_correct += torch.sum(correct).item()
-                num_examples += correct.shape[0]
-            valid_loss /= len(val_loader.dataset)
-            lista_val_loss.append(format(valid_loss, ".6f"))
-            lista_accuracy.append(num_correct/num_examples)
-            
-        scheduler.step()
-        lista_lr.append((format(scheduler.get_last_lr()[-1], ".6f")))
-        end = time.process_time()
-        duration = end-start
-        lista_time.append(duration)
-
-        print('Epoch: {}, Training Loss: {:.4f}, Validation Loss: {:.4f}, accuracy = {:.4f}, LR : {:.6f}, Time: {:.6f}'.format(epoch, training_loss,
-        valid_loss, num_correct / num_examples, scheduler.get_last_lr()[-1], duration))
-    if to_print:
-        return 
-    else:
-        dataframe = pd.DataFrame({"Epoch": lista_epoch, "Training Loss":lista_train_loss, "Validation Loss":lista_val_loss, "Accuracy":lista_accuracy, "Learning Rate":lista_lr, "Time":lista_time})
-        return dataframe
-    
 
 # model 1
 cnn1 = CNN()
 optimizer = optim.Adam(cnn1.parameters(), lr=lr)
-ExponentialLR = torch.optim.lr_scheduler.ExponentialLR
-results1 = train(cnn1, optimizer, torch.nn.CrossEntropyLoss(), train1_dl, val1_dl, epochs=10, to_print = False)
+results1 = train_cnn_exp(cnn1, optimizer, torch.nn.CrossEntropyLoss(), train1_dl, val1_dl, epochs=epochs, to_print = False)
 
 # Model 2
 cnn2 = CNN()
 optimizer = optim.Adam(cnn2.parameters(), lr=lr)
-ExponentialLR = torch.optim.lr_scheduler.ExponentialLR
-results2 = train(cnn2, optimizer, torch.nn.CrossEntropyLoss(), train2_dl, val2_dl, epochs=10, to_print = False)
+results2 = train_cnn_exp(cnn2, optimizer, torch.nn.CrossEntropyLoss(), train2_dl, val2_dl, epochs=epochs, to_print = False)
 
 # Model 3
 cnn3 = CNN()
 optimizer = optim.Adam(cnn3.parameters(), lr=lr)
-ExponentialLR = torch.optim.lr_scheduler.ExponentialLR
-results3 = train(cnn3, optimizer, torch.nn.CrossEntropyLoss(), train3_dl, val3_dl, epochs=10, to_print = False)
+results3 = train_cnn_exp(cnn3, optimizer, torch.nn.CrossEntropyLoss(), train3_dl, val3_dl, epochs=epochs, to_print = False)
 
 # Model 4
 cnn4 = CNN()
 optimizer = optim.Adam(cnn4.parameters(), lr=lr)
-ExponentialLR = torch.optim.lr_scheduler.ExponentialLR
-results4 = train(cnn4, optimizer, torch.nn.CrossEntropyLoss(), train4_dl, val4_dl, epochs=10, to_print = False)
+results4 = train_cnn_exp(cnn4, optimizer, torch.nn.CrossEntropyLoss(), train4_dl, val4_dl, epochs=epochs, to_print = False)
 
 # Model 5
 cnn5 = CNN()
 optimizer = optim.Adam(cnn5.parameters(), lr=lr)
-ExponentialLR = torch.optim.lr_scheduler.ExponentialLR
-results5 = train(cnn5, optimizer, torch.nn.CrossEntropyLoss(), train5_dl, val5_dl, epochs=10, to_print = False)
+results5 = train_cnn_exp(cnn5, optimizer, torch.nn.CrossEntropyLoss(), train5_dl, val5_dl, epochs=epochs, to_print = False)
 
 # Model 6
 cnn6 = CNN()
 optimizer = optim.Adam(cnn6.parameters(), lr=lr)
-ExponentialLR = torch.optim.lr_scheduler.ExponentialLR
-results6 = train(cnn6, optimizer, torch.nn.CrossEntropyLoss(), train6_dl, val6_dl, epochs=10, to_print = False)
+results6 = train_cnn_exp(cnn6, optimizer, torch.nn.CrossEntropyLoss(), train6_dl, val6_dl, epochs=epochs, to_print = False)
 
 # Model 7
 cnn7 = CNN()
 optimizer = optim.Adam(cnn7.parameters(), lr=lr)
-ExponentialLR = torch.optim.lr_scheduler.ExponentialLR
-results7 = train(cnn7, optimizer, torch.nn.CrossEntropyLoss(), train7_dl, val7_dl, epochs=10, to_print = False)
+results7 = train_cnn_exp(cnn7, optimizer, torch.nn.CrossEntropyLoss(), train7_dl, val7_dl, epochs=epochs, to_print = False)
+
+#####################################################################################################################################
+
+
+# Salvo risultati
+stringa_data = datetime.date.today().strftime("%Y_%m_%d")
+
+name = stringa_data + '_CNN_ensemble_' + str(channels) + 'f_' + pad + '_' + str(epochs) +'_'+ name_traj    # nome con cui salvare il file excel
+name_excel = name + '.xlsx'
+path_excel = os.path.join(folder_risultati, name_excel)
+
+res = [results1, results2, results3, results4, results5, results6, results7]
+sheet_names = ['results1', 'results2', 'results3', 'results4', 'results5', 'results6', 'results7']
+
+for j in range(len(res)):
+    if j == 0:
+        res[j].to_excel(path_excel, sheet_name=sheet_names[j], index = False)
+    else:
+        with pd.ExcelWriter(path_excel, mode='a', engine='openpyxl') as writer:
+            res[j].to_excel(writer, sheet_name=sheet_names[j], index = False)
 
 # salvo i modelli nei percorsi (paths)
+path1 = stringa_data + "_CNN_ensemble1_" + str(channels) + 'f_' + pad + '_' + str(epochs) +'_'+ name_traj + ".pth"
+path2 = stringa_data + "_CNN_ensemble2_" + str(channels) + 'f_' + pad + '_' + str(epochs) +'_'+ name_traj + ".pth"
+path3 = stringa_data + "_CNN_ensemble3_" + str(channels) + 'f_' + pad + '_' + str(epochs) +'_'+ name_traj + ".pth"
+path4 = stringa_data + "_CNN_ensemble4_" + str(channels) + 'f_' + pad + '_' + str(epochs) +'_'+ name_traj + ".pth"
+path5 = stringa_data + "_CNN_ensemble5_" + str(channels) + 'f_' + pad + '_' + str(epochs) +'_'+ name_traj + ".pth"
+path6 = stringa_data + "_CNN_ensemble6_" + str(channels) + 'f_' + pad + '_' + str(epochs) +'_'+ name_traj + ".pth"
+path7 = stringa_data + "_CNN_ensemble7_" + str(channels) + 'f_' + pad + '_' + str(epochs) +'_'+ name_traj + ".pth"
 
-path1 = "ensemble\ensemble_5f\CNN_ensemble1.pth"
-path2 = "ensemble\ensemble_5f\CNN_ensemble2.pth"
-path3 = "ensemble\ensemble_5f\CNN_ensemble3.pth"
-path4 = "ensemble\ensemble_5f\CNN_ensemble4.pth"
-path5 = "ensemble\ensemble_5f\CNN_ensemble5.pth"
-path6 = "ensemble\ensemble_5f\CNN_ensemble6.pth"
-path7 = "ensemble\ensemble_5f\CNN_ensemble7.pth"
-
-models_path = [path1, path2, path3, path4, path5, path6, path7]
+models_path = [os.path.join(folder_modelli, path1), 
+               os.path.join(folder_modelli, path2), 
+               os.path.join(folder_modelli, path3), 
+               os.path.join(folder_modelli, path4), 
+               os.path.join(folder_modelli, path5), 
+               os.path.join(folder_modelli, path6), 
+               os.path.join(folder_modelli, path7)]
 models = [cnn1, cnn2, cnn3, cnn4, cnn5, cnn6, cnn7]
 
 for i in range(len(models_path)):
@@ -519,9 +470,6 @@ for i in range(len(models_path)):
 
 
 # carico i modelli dai percorsi in cui sono stati salvati
-
-#cnn.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
-
 models = []
 for path in models_path:
     model = CNN()
@@ -530,6 +478,7 @@ for path in models_path:
     models.append(model)
 
 
+### Valuto test set e calcolo le misure
 y_test_pred = torch.zeros(32)
 y_test_true = torch.zeros(32)
 
@@ -537,32 +486,27 @@ with torch.no_grad():
     num_correct = 0
     num_examples  = 0
     for X_batch, targets in test_dl:
+        X_batch = X_batch.to(device)
+        targets = targets.to(device)
         outputs = []
         for model in models:
             output = model(X_batch)
             output = torch.max(F.softmax(output, dim=1), dim=1)[1]
-            #print(output)
             outputs.append(output)
         
         outputs = torch.stack(outputs, dim=0)
-        #print(outputs)
         outputs, _ = torch.mode(outputs, dim=0)
-        #print(outputs)
         correct = torch.eq(outputs, targets)
-        #correct = torch.eq(torch.max(F.softmax(y_test_pred1, dim=1), dim=1)[1], targets)
         num_correct += torch.sum(correct).item()
         num_examples += correct.shape[0]
         acc = num_correct/num_examples
         y_test_pred = torch.cat((y_test_pred, outputs), 0)
         y_test_true = torch.cat((y_test_true, targets), 0)
         
-y_test_pred = y_test_pred[32:]
-y_test_true = y_test_true[32:]
+y_test_pred = y_test_pred[batch:]
+y_test_true = y_test_true[batch:]
 
 print("The Accuracy on the test set is: {}".format(acc))
-
-
-#y_test_predicted1 = y_test_pred.argmax(1)
 
 cf_test1 = confusion_matrix(y_test_true, y_test_pred) 
 cf_test1 = pd.DataFrame(cf_test1, columns = [1,2,3,4,5], index = [1,2,3,4,5])
@@ -578,8 +522,5 @@ f1 = f1_score(y_test_true, y_test_pred, average = 'macro')
 cf_test1['accuracy'] = accur
 cf_test1['f1_score'] = f1
 
-
-cf_test1.to_excel('ensemble\ensemble_5f\CNN_ensemble_5f_test.xlsx', sheet_name = 'CNN ensemble test', index=False)
-print(cf_test1)
-
-
+with pd.ExcelWriter(path_excel, mode='a', engine='openpyxl') as writer:
+    cf_test1.to_excel(writer, sheet_name="CNN Test")

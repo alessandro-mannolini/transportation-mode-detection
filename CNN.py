@@ -19,9 +19,11 @@ from torch.utils.data import TensorDataset
 from torch.utils.data import DataLoader
 
 import yaml
+import os
+import datetime
+from functions import train_cnn
 
-# "c:/Users/aless/Documents/Master/Progetto di ricerca per Master/repo_tmd/env/Scripts/activate.bat"
-#############################################################################
+#####################################################################################################
 # parameters
 with open("config.yaml", "r") as f:
     config = yaml.safe_load(f)
@@ -30,30 +32,32 @@ flag = config['parameters']['flag']
 epochs = config['parameters']['epochs']
 batch = config['parameters']['batch_size']
 lr = config['parameters']['learning_rate']
-#channels = config['parameters']['channels']
 features = config['parameters']['features']
 pad = config['parameters']['pad']
-##############################################################################
+
+# folder
+folder_dati = config['folders']['folder_dati']
+folder_modelli = config['folders']['folder_modelli']
+folder_risultati = config['folders']['folder_risultati']
+######################################################################################################
 
 # check della gpu
-
 # device = cuba if available
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 if flag:
-    df1 = pd.read_pickle('C:/Users/aless/Documents/Master/Progetto di ricerca per Master/TMD/geolife_stop_mov_features_correct.pkl')
+    path_dati = os.path.join(folder_dati, "geolife_stop_mov_features_correct.pkl")
+    df1 = pd.read_pickle(path_dati)
     name_traj = 'stop_mov'
     features = ['stop_id'].extend(features)
     channels = len(features)
 else:
-    df1 = pd.read_pickle('C:/Users/aless/Documents/Master/Progetto di ricerca per Master/TMD/geolife_mov_with_features_correct2.pkl')
+    path_dati = os.path.join(folder_dati, "geolife_mov_with_features_correct2.pkl")
+    df1 = pd.read_pickle(path_dati)
     name_traj = 'mov'
     channels = len(features)
 
 df1 = df1.groupby(["mov_id"]).filter(lambda x: len(x) >= 10) 
-
 traj1 = df1.copy()
 
 scaler = StandardScaler()
@@ -61,9 +65,9 @@ features_scaler = traj1[['Speed','Acceleration','Jerk','Distance','Distance_from
 scaled_data = scaler.fit_transform(features_scaler)
 traj1[['Speed','Acceleration','Jerk','Distance','Distance_from_start','alt','Bearing_Rate','Bearing']] = scaled_data
 
-############################################################
+#################################################################################################################################
 
-############################################################
+#################################################################################################################################
 
 x_channels = traj1.groupby(['traj_id','mov_id'], as_index = False).apply(lambda x: x[features].values)
 x_channels = x_channels.values
@@ -73,6 +77,7 @@ max_len = 900   # ho tagliato le traiettorie a 900
 x_cut_0 = [np.pad(x, ((0, max_len - len(x)), (0,0)) , pad)  for x in x_cut]
 x_cut_0_array = np.array(x_cut_0)
 
+# labels
 y = df1.groupby(['traj_id','mov_id', "label"]).apply(lambda x: x['label'].values)
 y = np.array(y.index.get_level_values("label")).astype(int)
 y2 = y-1
@@ -99,7 +104,7 @@ train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle = True)
 test_ds = TensorDataset(x_test_tensor_reshaped, y_test_tensor)
 test_dl = DataLoader(test_ds, batch_size=batch_size)
 
-####################################################################################################
+##############################################################################################################################
 
 class CNN(nn.Module):
     def __init__(self):
@@ -242,90 +247,25 @@ class CNN(nn.Module):
             print('FINAL',out.shape)
 
         return out
-    
-
-
-def train(model, optimizer, loss_fn, train_loader, val_loader, epochs=20, device="cpu",to_print=True):
-    
-    model.to(device)
-
-    lista_epoch = []
-    lista_train_loss = []
-    lista_val_loss = []
-    lista_accuracy = []
-    lista_time = []
-    
-    print("Begin training...")
-    
-    for epoch in range(1, epochs+1):
-        start = time.process_time()
-        lista_epoch.append(epoch)
-        training_loss = 0.0
-        valid_loss = 0.0
-        model.train()
-        for batch in train_loader:
-            optimizer.zero_grad() # clear gradients for next train
-            inputs, targets = batch
-            inputs = inputs.to(device)
-            targets = targets.to(device)
-            output = model(inputs,to_print)
-            #print(output)
-            #print(targets)
-            loss = loss_fn(output, targets)
-            loss.backward() # backpropagation, compute gradients
-            optimizer.step() # apply gradients
-            training_loss += loss.data.item() * inputs.size(0)
-            # print(training_loss,loss.data.item(),inputs.size(0))
-        
-            if to_print:
-                break
-        training_loss /= len(train_loader.dataset)
-        lista_train_loss.append(format(training_loss, ".6f"))
-        
-        if to_print:
-            break
-        with torch.no_grad():
-            model.eval()
-            num_correct = 0 
-            num_examples = 0
-            for batch in val_loader:
-                inputs, targets = batch
-                inputs = inputs.to(device)
-                output = model(inputs)
-                targets = targets.to(device)
-                loss = loss_fn(output,targets) 
-                valid_loss += loss.data.item() * inputs.size(0)
-                correct = torch.eq(torch.max(F.softmax(output, dim=1), dim=1)[1], targets)
-                num_correct += torch.sum(correct).item()
-                num_examples += correct.shape[0]
-            valid_loss /= len(val_loader.dataset)
-            lista_val_loss.append(format(valid_loss, ".6f"))
-            lista_accuracy.append(num_correct/num_examples)
-            
-        end = time.process_time()
-        duration = end-start
-        lista_time.append(duration)
-
-        print('Epoch: {}, Training Loss: {:.4f}, Validation Loss: {:.4f}, accuracy = {:.4f}, Time: {:.6f}'.format(epoch, training_loss,
-        valid_loss, num_correct / num_examples, duration))
-    if to_print:
-        return 
-    else:
-        dataframe = pd.DataFrame({"Epoch": lista_epoch, "Training Loss":lista_train_loss, "Validation Loss":lista_val_loss, "Accuracy":lista_accuracy, "Time":lista_time})
-        return dataframe
-
 
 ########################################################################################################
 
 cnn = CNN()
 optimizer = optim.Adam(cnn.parameters(), lr=lr)
-results = train(cnn, optimizer, torch.nn.CrossEntropyLoss(), train_dl, test_dl, epochs=epochs, to_print = False)
+results = train_cnn(cnn, optimizer, torch.nn.CrossEntropyLoss(), train_dl, test_dl, epochs=epochs, to_print = False)
 
-name_excel = 'CNN_' + str(channels) + 'f_' + pad + '_' + str(epochs) +'_'+ name_traj    # nome con cui salvare il file excel
-results.to_excel(name_excel+'.xlsx', sheet_name = 'CNN results', index=False)
+# Salvo modello e risultati
+stringa_data = datetime.date.today().strftime("%Y_%m_%d")
 
-path = name_excel+".pth"
-torch.save(cnn.state_dict(), path) 
+name = stringa_data + '_CNN_' + str(channels) + 'f_' + pad + '_' + str(epochs) +'_'+ name_traj    # nome con cui salvare il file excel
+name_excel = name + '.xlsx'
+path_excel = os.path.join(folder_risultati, name_excel)
+results.to_excel(path_excel, sheet_name = 'CNN results', index=False)
+
+name_model = name + '.pth'
+path_model = os.path.join(folder_modelli, name_model)
+torch.save(cnn.state_dict(), path_model)     # salvo i parametri del modello
+cnn.load_state_dict(torch.load(path_model))  # carico i parametri del modello
 
 
 ### valuto train set e calcolo le misure che voglio###
@@ -367,7 +307,7 @@ f1 = f1_score(y_train_true, y_train_predicted1, average = 'macro')
 cf_train1['accuracy'] = accur
 cf_train1['f1_score'] = f1
 
-with pd.ExcelWriter(name_excel+'.xlsx', mode='a', engine='openpyxl') as writer:
+with pd.ExcelWriter(path_excel, mode='a', engine='openpyxl') as writer:
     cf_train1.to_excel(writer, sheet_name="CNN Train")
 
 
@@ -410,5 +350,5 @@ accur = accuracy_score(y_test_true, y_test_predicted1)
 f1 = f1_score(y_test_true, y_test_predicted1, average = 'macro')
 cf_test1['accuracy'] = accur
 cf_test1['f1_score'] = f1
-with pd.ExcelWriter(name_excel+'.xlsx', mode='a', engine='openpyxl') as writer:
+with pd.ExcelWriter(path_excel, mode='a', engine='openpyxl') as writer:
     cf_test1.to_excel(writer, sheet_name="CNN Test")
